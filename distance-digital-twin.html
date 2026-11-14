@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07111f">
+  <title>Distance Twin | Live IoT Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#07111f; --panel:#0d1b2d; --panel2:#10233a; --line:#1c3550;
+      --text:#edf6ff; --muted:#8da5bd; --cyan:#55dff0; --blue:#5798ff;
+      --green:#48dfaa; --amber:#ffc66d; --red:#ff7185;
+      --shadow:0 18px 50px rgba(0,0,0,.22);
+    }
+    * { box-sizing:border-box }
+    body {
+      margin:0; min-height:100vh; color:var(--text);
+      font-family:Manrope,system-ui,sans-serif;
+      background:
+        radial-gradient(ellipse at 8% 0%,rgba(43,130,190,.16),transparent 35%),
+        radial-gradient(ellipse at 95% 12%,rgba(45,205,190,.10),transparent 28%),
+        var(--bg);
+    }
+    .shell { width:min(1240px,calc(100% - 36px)); margin:0 auto; padding:30px 0 42px }
+    header { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:26px }
+    .brand { display:flex; align-items:center; gap:14px }
+    .logo {
+      width:48px;height:48px;border-radius:15px;display:grid;place-items:center;
+      background:linear-gradient(145deg,#173c5a,#0d263b);border:1px solid #2a5874;
+      color:var(--cyan);box-shadow:0 8px 25px #0005;
+    }
+    .logo svg { width:27px;height:27px }
+    h1 { font-size:clamp(20px,3vw,27px);letter-spacing:-.8px;margin:0;font-weight:800 }
+    .eyebrow { color:var(--cyan);font:11px "DM Mono",monospace;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px }
+    .subhead { color:var(--muted);font-size:12px;margin-top:4px }
+    .header-right { display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end }
+    .pill { display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:999px;background:#0b1a2b;color:var(--muted);font-size:11px;font-weight:700 }
+    .dot { width:7px;height:7px;border-radius:50%;background:#71869a;box-shadow:0 0 0 4px #71869a1c }
+    .dot.live { background:var(--green);box-shadow:0 0 0 4px #48dfaa20 }
+    .dot.bad { background:var(--red);box-shadow:0 0 0 4px #ff718520 }
+    .hero {
+      display:grid;grid-template-columns:1.35fr .65fr;gap:18px;margin-bottom:18px
+    }
+    .panel {
+      background:linear-gradient(145deg,rgba(16,35,58,.96),rgba(10,25,42,.96));
+      border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);
+    }
+    .main-reading { padding:26px 28px;position:relative;overflow:hidden;min-height:250px }
+    .main-reading:after {
+      content:"";position:absolute;width:260px;height:260px;border-radius:50%;
+      right:-80px;top:-115px;border:1px solid #55dff01c;
+      box-shadow:0 0 0 28px #55dff008,0 0 0 58px #55dff006;pointer-events:none
+    }
+    .section-label { color:var(--muted);font-size:11px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase }
+    .reading-row { display:flex;align-items:baseline;gap:12px;margin:22px 0 14px }
+    .reading { font-size:clamp(58px,9vw,94px);line-height:.95;font-weight:800;letter-spacing:-5px;color:var(--cyan);text-shadow:0 0 34px #55dff025 }
+    .unit { color:#9cb5ca;font:16px "DM Mono",monospace }
+    .status-line { display:flex;align-items:center;gap:10px;flex-wrap:wrap }
+    .state-tag { border-radius:999px;padding:7px 11px;font:11px "DM Mono",monospace;background:#163b3b;color:var(--green);border:1px solid #285b56 }
+    .reading-note { color:var(--muted);font-size:12px }
+    .side-card { padding:24px;display:flex;flex-direction:column;justify-content:space-between;gap:24px }
+    .signal-value { font:28px "DM Mono",monospace;margin-top:10px }
+    .signal-caption { color:var(--muted);font-size:12px;margin-top:5px }
+    .signal-bars { display:flex;gap:5px;align-items:flex-end;height:34px;margin-top:12px }
+    .signal-bars i { display:block;width:8px;border-radius:4px;background:#24415c;height:12px }
+    .signal-bars i:nth-child(1){height:10px}.signal-bars i:nth-child(2){height:16px}.signal-bars i:nth-child(3){height:22px}.signal-bars i:nth-child(4){height:28px}.signal-bars i:nth-child(5){height:34px}
+    .grid3 { display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px }
+    .metric { padding:19px 21px }
+    .metric-value { font:25px "DM Mono",monospace;margin-top:12px }
+    .metric-foot { color:var(--muted);font-size:11px;margin-top:5px }
+    .content-grid { display:grid;grid-template-columns:1.45fr .75fr;gap:18px }
+    .chart-panel { padding:22px 22px 16px;min-height:330px }
+    .panel-head { display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px }
+    .panel-title { font-size:14px;font-weight:800 }
+    .panel-desc { color:var(--muted);font-size:11px;margin-top:4px }
+    .chart-wrap { height:235px;position:relative }
+    canvas { width:100%;height:100%;display:block }
+    .chart-legend { color:var(--muted);font:10px "DM Mono",monospace }
+    .connection-panel { padding:22px }
+    .connection-row { display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid #1b334b;gap:12px }
+    .connection-row:last-of-type { border-bottom:0 }
+    .connection-label { color:var(--muted);font-size:12px }
+    .connection-value { font:11px "DM Mono",monospace;text-align:right;overflow-wrap:anywhere;max-width:60% }
+    .actions { display:flex;gap:9px;flex-wrap:wrap;margin-top:18px }
+    button {
+      border:1px solid #2a506d;background:#14324c;color:var(--text);border-radius:12px;
+      padding:11px 14px;font:700 11px Manrope,sans-serif;cursor:pointer;transition:.18s ease
+    }
+    button:hover { transform:translateY(-1px);border-color:var(--cyan);background:#17405a }
+    button.primary { color:#04131d;background:linear-gradient(100deg,var(--cyan),#76baff);border:0 }
+    button:disabled { opacity:.45;cursor:not-allowed;transform:none }
+    .feed { margin-top:18px;padding:21px 22px }
+    .feed-head { display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px }
+    .feed-list { display:grid;gap:8px;max-height:190px;overflow:auto }
+    .feed-item { display:grid;grid-template-columns:90px 1fr auto;gap:12px;align-items:center;padding:10px 12px;background:#0a1929;border:1px solid #172e45;border-radius:11px;font-size:11px }
+    .feed-time,.feed-value {font-family:"DM Mono",monospace;color:var(--muted)}
+    .feed-value {color:var(--cyan)}
+    .empty { color:var(--muted);font-size:12px;padding:14px 0 }
+    .connect-box { margin-bottom:18px;padding:18px 20px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center }
+    .connect-copy strong {font-size:13px}.connect-copy p {margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.6}
+    .connect-controls {display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    input { width:145px;min-width:0;padding:10px 11px;border-radius:10px;border:1px solid #29445e;background:#081727;color:var(--text);font:11px "DM Mono",monospace;outline:none }
+    input:focus {border-color:var(--cyan)}
+    footer {display:flex;justify-content:space-between;gap:12px;color:#647f98;font-size:10px;margin-top:24px;flex-wrap:wrap}
+    .toast {position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:11px 15px;border-radius:11px;background:#173b4b;border:1px solid #2b6172;color:#dffaff;font-size:12px;opacity:0;pointer-events:none;transition:.2s}
+    .toast.show {opacity:1}
+    @media(max-width:850px){.hero,.content-grid{grid-template-columns:1fr}.side-card{flex-direction:row}.grid3{grid-template-columns:1fr 1fr 1fr}}
+    @media(max-width:600px){
+      .shell{width:min(100% - 22px,1240px);padding-top:18px}
+      header{align-items:flex-start}.header-right{max-width:130px}
+      .hero{gap:12px}.main-reading{padding:22px;min-height:220px}
+      .grid3{gap:8px}.metric{padding:15px 12px}.metric-value{font-size:19px}
+      .connect-box{grid-template-columns:1fr}.connect-controls{justify-content:flex-start}
+      input{flex:1;width:100px}.side-card{flex-direction:row}
+      .feed-item{grid-template-columns:68px 1fr auto;gap:6px}
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h3l2.2-6 4.1 12 2.2-6H21"/>
+            <circle cx="12" cy="12" r="10"/>
+          </svg>
+        </div>
+        <div>
+          <div class="eyebrow">Internet of Things / Digital Twin</div>
+          <h1>Distance Twin</h1>
+          <div class="subhead">Real-time spatial monitoring · ESP32 + HC-SR04</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="pill"><span class="dot" id="mqttDot"></span><span id="headerStatus">OFFLINE</span></div>
+        <div class="pill">DEVICE <span style="color:var(--cyan)">DIST-01</span></div>
+      </div>
+    </header>
+
+    <section class="panel connect-box">
+      <div class="connect-copy">
+        <strong>Secure cloud connection</strong>
+        <p>Enter a dedicated read-only EMQX account. Credentials are used in this browser session only and are not saved in this page.</p>
+      </div>
+      <div class="connect-controls">
+        <input id="mqttUser" autocomplete="username" placeholder="MQTT username" aria-label="MQTT username">
+        <input id="mqttPass" type="password" autocomplete="current-password" placeholder="MQTT password" aria-label="MQTT password">
+        <button class="primary" id="connectBtn" onclick="connectMQTT()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnectMQTT()" disabled>Disconnect</button>
+      </div>
+    </section>
+
+    <section class="hero">
+      <div class="panel main-reading">
+        <div class="section-label">Live measured distance</div>
+        <div class="reading-row"><div class="reading" id="distanceValue">--.-</div><div class="unit">CENTIMETERS</div></div>
+        <div class="status-line">
+          <span class="state-tag" id="rangeState">WAITING FOR DATA</span>
+          <span class="reading-note" id="lastUpdate">No measurements received yet</span>
+        </div>
+      </div>
+      <div class="panel side-card">
+        <div>
+          <div class="section-label">Wi-Fi signal strength</div>
+          <div class="signal-value" id="rssiValue">-- dBm</div>
+          <div class="signal-caption" id="signalQuality">Waiting for device telemetry</div>
+          <div class="signal-bars" id="signalBars"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div>
+          <div class="section-label">Device uptime</div>
+          <div class="signal-value" id="uptimeValue">--:--:--</div>
+          <div class="signal-caption">Since last device restart</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid3">
+      <div class="panel metric"><div class="section-label">Session minimum</div><div class="metric-value" id="minValue">--.- cm</div><div class="metric-foot">Lowest received measurement</div></div>
+      <div class="panel metric"><div class="section-label">Session average</div><div class="metric-value" id="avgValue">--.- cm</div><div class="metric-foot">Average of valid readings</div></div>
+      <div class="panel metric"><div class="section-label">Session maximum</div><div class="metric-value" id="maxValue">--.- cm</div><div class="metric-foot">Highest received measurement</div></div>
+    </section>
+
+    <section class="content-grid">
+      <div class="panel chart-panel">
+        <div class="panel-head">
+          <div><div class="panel-title">Distance history</div><div class="panel-desc">Live telemetry · latest 60 measurements</div></div>
+          <div class="chart-legend">CM / REAL TIME</div>
+        </div>
+        <div class="chart-wrap"><canvas id="distanceChart"></canvas></div>
+      </div>
+      <div class="panel connection-panel">
+        <div class="panel-title">System diagnostics</div>
+        <div class="panel-desc">Cloud and device telemetry</div>
+        <div class="connection-row"><span class="connection-label">MQTT broker</span><span class="connection-value" id="brokerState">Disconnected</span></div>
+        <div class="connection-row"><span class="connection-label">Topic</span><span class="connection-value">distance/device/data</span></div>
+        <div class="connection-row"><span class="connection-label">Device ID</span><span class="connection-value" id="deviceId">Waiting</span></div>
+        <div class="connection-row"><span class="connection-label">Messages received</span><span class="connection-value" id="messageCount">0</span></div>
+        <div class="connection-row"><span class="connection-label">Last packet</span><span class="connection-value" id="packetTime">--</span></div>
+        <div class="actions">
+          <button class="primary" id="downloadBtn" onclick="downloadCSV()" disabled>↓ Download session CSV</button>
+          <button onclick="clearHistory()">Clear chart</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel feed">
+      <div class="feed-head"><div><div class="panel-title">Live event stream</div><div class="panel-desc">Most recent incoming MQTT packets</div></div><div class="chart-legend" id="feedCount">0 EVENTS</div></div>
+      <div class="feed-list" id="feedList"><div class="empty">Connect to the broker to start receiving telemetry.</div></div>
+    </section>
+
+    <footer><span>DISTANCE TWIN · ESP32 TELEMETRY INTERFACE</span><span>Cloud transport: MQTT over secure WebSocket (WSS)</span><span id="footerClock">--</span></footer>
+  </main>
+  <div class="toast" id="toast"></div>
+
+<script>
+  // EMQX Cloud WebSocket endpoint. Keep this aligned with your EMQX deployment.
+  const MQTT_URL = "wss://v916f16f.ala.asia-southeast1.emqxsl.com:8084/mqtt";
+  const MQTT_TOPIC = "distance/device/data";
+
+  let client = null;
+  let history = [];
+  let messageTotal = 0;
+  let lastDeviceId = "Waiting";
+  let latestPacket = null;
+
+  const $ = id => document.getElementById(id);
+  const fmt = n => Number(n).toFixed(1);
+
+  function notify(message) {
+    const t = $("toast");
+    t.textContent = message;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2600);
+  }
+
+  function setConnection(connected, label) {
+    $("mqttDot").className = connected ? "dot live" : "dot bad";
+    $("headerStatus").textContent = label;
+    $("brokerState").textContent = connected ? "Connected · WSS" : label;
+    $("connectBtn").disabled = connected;
+    $("disconnectBtn").disabled = !connected;
+  }
+
+  function connectMQTT() {
+    if (typeof mqtt === "undefined") {
+      notify("MQTT library did not load. Check your internet connection.");
+      return;
+    }
+    const username = $("mqttUser").value.trim();
+    const password = $("mqttPass").value;
+    if (!username || !password) {
+      notify("Enter your read-only MQTT username and password.");
+      return;
+    }
+    if (client) {
+      try { client.end(true); } catch(e) {}
+      client = null;
+    }
+    setConnection(false, "CONNECTING");
+    $("brokerState").textContent = "Connecting...";
+    client = mqtt.connect(MQTT_URL, {
+      username,
+      password,
+      clientId: "distance-twin-web-" + Math.random().toString(16).slice(2, 10),
+      clean: true,
+      connectTimeout: 10000,
+      reconnectPeriod: 3000,
+      keepalive: 30
+    });
+
+    client.on("connect", () => {
+      setConnection(true, "ONLINE");
+      client.subscribe(MQTT_TOPIC, {qos: 0}, err => {
+        if (err) notify("Connected, but topic subscription failed.");
+        else notify("Connected. Listening for Distance ESP32.");
+      });
+    });
+
+    client.on("reconnect", () => setConnection(false, "RECONNECTING"));
+    client.on("offline", () => setConnection(false, "OFFLINE"));
+    client.on("close", () => setConnection(false, "OFFLINE"));
+    client.on("error", err => {
+      console.error("MQTT error:", err);
+      setConnection(false, "CONNECTION ERROR");
+    });
+    client.on("message", (topic, payload) => {
+      if (topic !== MQTT_TOPIC) return;
+      try {
+        const data = JSON.parse(payload.toString());
+        receiveData(data);
+      } catch (e) {
+        console.warn("Invalid MQTT JSON packet", e);
+      }
+    });
+  }
+
+  function disconnectMQTT() {
+    if (client) {
+      client.end(true);
+      client = null;
+    }
+    setConnection(false, "OFFLINE");
+    notify("Disconnected from broker.");
+  }
+
+  function receiveData(data) {
+    messageTotal++;
+    latestPacket = data;
+    lastDeviceId = data.device || "DistanceESP32";
+    $("deviceId").textContent = lastDeviceId;
+    $("messageCount").textContent = messageTotal.toLocaleString();
+    $("packetTime").textContent = new Date().toLocaleTimeString();
+    $("lastUpdate").textContent = "Updated " + new Date().toLocaleTimeString();
+    $("downloadBtn").disabled = false;
+
+    if (typeof data.distance_cm === "number" && Number.isFinite(data.distance_cm)) {
+      const point = {time: new Date(), distance: data.distance_cm, rssi: data.wifi_rssi ?? null, uptime: data.uptime_seconds ?? null};
+      history.push(point);
+      if (history.length > 6000) history.shift();
+      renderReading(point);
+      renderStats();
+      drawChart();
+      addFeed(point, data.device || "DistanceESP32");
+    } else {
+      addFeed({time:new Date(), distance:null}, data.device || "DistanceESP32");
+      $("rangeState").textContent = "NO VALID READING";
+    }
+  }
+
+  function renderReading(point) {
+    $("distanceValue").textContent = fmt(point.distance);
+    let state = "FAR";
+    if (point.distance < 20) state = "VERY CLOSE";
+    else if (point.distance < 100) state = "MEDIUM";
+    $("rangeState").textContent = state;
+    $("rangeState").style.color = point.distance < 20 ? "var(--red)" : point.distance < 100 ? "var(--amber)" : "var(--green)";
+    $("rangeState").style.background = point.distance < 20 ? "#4b2331" : point.distance < 100 ? "#49371f" : "#163b3b";
+    if (point.rssi !== null) {
+      $("rssiValue").textContent = point.rssi + " dBm";
+      const quality = point.rssi > -55 ? "Excellent signal" : point.rssi > -67 ? "Good signal" : point.rssi > -75 ? "Fair signal" : "Weak signal";
+      $("signalQuality").textContent = quality;
+      const bars = point.rssi > -55 ? 5 : point.rssi > -67 ? 4 : point.rssi > -75 ? 3 : point.rssi > -85 ? 2 : 1;
+      [...$("signalBars").children].forEach((bar,i) => bar.style.background = i < bars ? "var(--green)" : "#24415c");
+    }
+    if (point.uptime !== null) $("uptimeValue").textContent = formatUptime(point.uptime);
+  }
+
+  function formatUptime(seconds) {
+    const s = Math.max(0, Math.floor(seconds));
+    const h = String(Math.floor(s / 3600)).padStart(2,"0");
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2,"0");
+    const sec = String(s % 60).padStart(2,"0");
+    return `${h}:${m}:${sec}`;
+  }
+
+  function renderStats() {
+    if (!history.length) return;
+    const values = history.map(p => p.distance);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const avg = values.reduce((a,b) => a+b,0) / values.length;
+    $("minValue").textContent = fmt(min) + " cm";
+    $("avgValue").textContent = fmt(avg) + " cm";
+    $("maxValue").textContent = fmt(max) + " cm";
+  }
+
+  function addFeed(point, device) {
+    const list = $("feedList");
+    if (list.querySelector(".empty")) list.innerHTML = "";
+    const item = document.createElement("div");
+    item.className = "feed-item";
+    const time = document.createElement("span");
+    time.className = "feed-time";
+    time.textContent = point.time.toLocaleTimeString();
+    const name = document.createElement("span");
+    name.textContent = device;
+    const value = document.createElement("span");
+    value.className = "feed-value";
+    value.textContent = point.distance === null ? "No reading" : fmt(point.distance) + " cm";
+    item.append(time,name,value);
+    list.prepend(item);
+    while (list.children.length > 12) list.removeChild(list.lastChild);
+    $("feedCount").textContent = messageTotal + " EVENTS";
+  }
+
+  function drawChart() {
+    const canvas = $("distanceChart");
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(rect.width*dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height*dpr));
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr,dpr);
+    const w = rect.width, h = rect.height;
+    ctx.clearRect(0,0,w,h);
+    const data = history.slice(-60);
+    const pad = {l:42,r:12,t:14,b:26};
+    const cw = w-pad.l-pad.r, ch = h-pad.t-pad.b;
+    ctx.font = '10px "DM Mono", monospace';
+    ctx.textAlign = "right";
+    if (!data.length) {
+      ctx.fillStyle = "#8da5bd";
+      ctx.textAlign = "center";
+      ctx.fillText("Waiting for incoming measurements",w/2,h/2);
+      return;
+    }
+    let min = Math.min(...data.map(p=>p.distance));
+    let max = Math.max(...data.map(p=>p.distance));
+    const span = Math.max(20,max-min);
+    min = Math.max(0,min-span*.2);
+    max = max+span*.2;
+    for(let i=0;i<=4;i++){
+      const y=pad.t+(ch/4)*i;
+      ctx.strokeStyle="#1b344c";ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();
+      const val=max-(max-min)*i/4;
+      ctx.fillStyle="#7891aa";ctx.fillText(val.toFixed(0),pad.l-8,y+3);
+    }
+    const xAt=i=>pad.l+(data.length===1?cw/2:(i/(data.length-1))*cw);
+    const yAt=v=>pad.t+((max-v)/(max-min))*ch;
+    const gradient=ctx.createLinearGradient(0,pad.t,0,h-pad.b);
+    gradient.addColorStop(0,"rgba(85,223,240,.27)");
+    gradient.addColorStop(1,"rgba(85,223,240,0)");
+    ctx.beginPath();
+    data.forEach((p,i)=>i?ctx.lineTo(xAt(i),yAt(p.distance)):ctx.moveTo(xAt(i),yAt(p.distance)));
+    ctx.lineTo(xAt(data.length-1),h-pad.b);
+    ctx.lineTo(xAt(0),h-pad.b);
+    ctx.closePath();ctx.fillStyle=gradient;ctx.fill();
+    ctx.beginPath();
+    data.forEach((p,i)=>i?ctx.lineTo(xAt(i),yAt(p.distance)):ctx.moveTo(xAt(i),yAt(p.distance)));
+    ctx.strokeStyle="#55dff0";ctx.lineWidth=2.4;ctx.lineJoin="round";ctx.lineCap="round";ctx.stroke();
+    const last=data[data.length-1];
+    ctx.beginPath();ctx.arc(xAt(data.length-1),yAt(last.distance),4,0,Math.PI*2);
+    ctx.fillStyle="#55dff0";ctx.fill();
+    ctx.strokeStyle="#dffcff";ctx.lineWidth=1.5;ctx.stroke();
+    ctx.textAlign="left";ctx.fillStyle="#7891aa";
+    ctx.fillText("OLDER",pad.l,h-5);
+    ctx.textAlign="right";ctx.fillText("LATEST",w-pad.r,h-5);
+  }
+
+  function downloadCSV() {
+    if (!history.length) return notify("There is no session history to download yet.");
+    const rows = [["timestamp","distance_cm","wifi_rssi_dbm","uptime_seconds"]];
+    history.forEach(p => rows.push([p.time.toISOString(),p.distance,p.rssi ?? "",p.uptime ?? ""]));
+    const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+    const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href=url;a.download="distance-session-history.csv";
+    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+    notify("Session CSV downloaded.");
+  }
+
+  function clearHistory() {
+    history=[];
+    $("minValue").textContent="--.- cm";
+    $("avgValue").textContent="--.- cm";
+    $("maxValue").textContent="--.- cm";
+    $("feedList").innerHTML='<div class="empty">Chart history cleared. New messages will appear here.</div>';
+    drawChart();
+    notify("Browser session history cleared.");
+  }
+
+  $("footerClock").textContent = "LOCAL TIME · " + new Date().toLocaleDateString();
+  window.addEventListener("resize",drawChart);
+  drawChart();
+</script>
+</body>
+</html>
